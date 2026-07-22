@@ -855,6 +855,7 @@
 import { ref, computed, watch, nextTick } from "vue";
 import { call, Dialog } from "frappe-ui";
 import { __ } from "@/utils/translation";
+import { offlineWorker } from "@/utils/offline/workerClient";
 
 const props = defineProps({
 	modelValue: Boolean,
@@ -1090,14 +1091,25 @@ async function performSearch() {
 	}
 
 	try {
-		const response = await call("pos_next.api.items.get_items", {
-			pos_profile: props.posProfile,
-			search_term: searchQuery.value,
-			start: 0,
-			limit: 15, // Show more results for better autocomplete
-		});
+		// Use client-side fuzzy search worker first (offline-first & typo-tolerant)
+		let results = [];
+		try {
+			results = await offlineWorker.searchCachedItems(searchQuery.value, 15);
+		} catch (workerErr) {
+			console.warn("Offline worker search failed, falling back to server:", workerErr);
+		}
 
-		searchResults.value = response || [];
+		// Fallback: If worker has 0 results or failed, try server call
+		if (!results || results.length === 0) {
+			results = await call("pos_next.api.items.get_items", {
+				pos_profile: props.posProfile,
+				search_term: searchQuery.value,
+				start: 0,
+				limit: 15,
+			});
+		}
+
+		searchResults.value = results || [];
 
 		// Auto-select first result for quick enter
 		if (searchResults.value.length > 0) {

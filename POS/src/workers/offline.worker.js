@@ -69,8 +69,9 @@ const FUSE_CONFIG = {
 	distance: 200,         // How far to search within a string
 	minMatchCharLength: 2, // Ignore single-char queries for fuzzy
 	ignoreLocation: true,  // Match anywhere in the string, not just near the start
-	useExtendedSearch: false,
+	useExtendedSearch: true, // Default to true to support out-of-order token matches
 	includeScore: true,
+	algorithm: "partial_token_set_ratio",
 };
 
 /**
@@ -687,7 +688,12 @@ async function searchCachedItems(searchTerm = "", limit = 50, offset = 0) {
 		// This catches typos like "samsoong" → "Samsung", "del i5" → "Dell i5 Laptop"
 		const fuse = await getFuseIndex();
 		if (fuse) {
+			log.debug(`Fuse.js running query: "${term}" (threshold: ${FUSE_CONFIG.threshold}, distance: ${FUSE_CONFIG.distance})`);
 			const fuseResults = fuse.search(term, { limit });
+			log.debug(`Fuse.js matched count: ${fuseResults.length}`);
+			if (fuseResults.length > 0) {
+				log.debug(`Top fuzzy match: "${fuseResults[0].item.item_name}" score: ${fuseResults[0].score}`);
+			}
 			const fuzzyItems = fuseResults
 				.filter((r) => shouldShowItem(r.item))
 				.map((r) => r.item);
@@ -1781,7 +1787,7 @@ function getStockSyncStatus() {
 /**
  * Configure Fuse.js fuzzy search settings dynamically
  */
-function configureFuzzySearch({ threshold, distance }) {
+function configureFuzzySearch({ threshold, distance, algorithm }) {
 	let changed = false;
 	if (threshold !== undefined && FUSE_CONFIG.threshold !== parseFloat(threshold)) {
 		FUSE_CONFIG.threshold = parseFloat(threshold);
@@ -1791,14 +1797,27 @@ function configureFuzzySearch({ threshold, distance }) {
 		FUSE_CONFIG.distance = parseInt(distance);
 		changed = true;
 	}
+	if (algorithm !== undefined && FUSE_CONFIG.algorithm !== algorithm) {
+		FUSE_CONFIG.algorithm = algorithm;
+		// Map python rapidfuzz algorithms to Fuse.js config settings
+		if (algorithm === "partial_token_set_ratio" || algorithm === "WRatio" || algorithm === "token_set_ratio") {
+			FUSE_CONFIG.useExtendedSearch = true;
+			FUSE_CONFIG.ignoreLocation = true;
+		} else {
+			FUSE_CONFIG.useExtendedSearch = false;
+			FUSE_CONFIG.ignoreLocation = false;
+		}
+		changed = true;
+	}
 	if (changed) {
 		fuseIndexDirty = true;
 		invalidateCache("search:");
-		log.debug(`Fuzzy search reconfigured: threshold=${FUSE_CONFIG.threshold}, distance=${FUSE_CONFIG.distance}`);
+		log.debug(`Fuzzy search reconfigured: algorithm=${FUSE_CONFIG.algorithm}, threshold=${FUSE_CONFIG.threshold}, distance=${FUSE_CONFIG.distance}, useExtendedSearch=${FUSE_CONFIG.useExtendedSearch}`);
 	}
 	return {
 		threshold: FUSE_CONFIG.threshold,
 		distance: FUSE_CONFIG.distance,
+		algorithm: FUSE_CONFIG.algorithm,
 	};
 }
 

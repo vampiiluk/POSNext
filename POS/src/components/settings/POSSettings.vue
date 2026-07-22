@@ -586,6 +586,17 @@
 												:max="1000"
 												:step="50"
 											/>
+
+											<SelectField
+												v-model="fuzzySearchAlgorithm"
+												:label="__('Fuzzy Algorithm')"
+												:options="algorithmOptions"
+												:description="
+													__(
+														'Underlying mathematical algorithm used to score matches. Recommended: partial_token_set_ratio'
+													)
+												"
+											/>
 										</div>
 									</div>
 								</div>
@@ -1252,6 +1263,15 @@ const settings = ref({
 // Fuzzy Search Settings (localStorage persisted)
 const fuzzySearchThreshold = ref(0.5); // Default 0.5
 const fuzzySearchDistance = ref(200);  // Default 200
+const fuzzySearchAlgorithm = ref("partial_token_set_ratio"); // Default matching advanced_search.py
+
+const algorithmOptions = [
+	{ label: "partial_token_set_ratio (Recommended)", value: "partial_token_set_ratio" },
+	{ label: "WRatio", value: "WRatio" },
+	{ label: "token_set_ratio", value: "token_set_ratio" },
+	{ label: "partial_ratio", value: "partial_ratio" },
+	{ label: "QRatio", value: "QRatio" },
+];
 
 // Stock Sync Settings (localStorage persisted)
 const stockSyncEnabled = ref(false);
@@ -1627,6 +1647,7 @@ function loadFuzzySearchSettings() {
 			const parsed = JSON.parse(saved);
 			fuzzySearchThreshold.value = parsed.threshold ?? 0.5;
 			fuzzySearchDistance.value = parsed.distance ?? 200;
+			fuzzySearchAlgorithm.value = parsed.algorithm ?? "partial_token_set_ratio";
 		}
 	} catch (error) {
 		log.error("Failed to load fuzzy search settings:", error);
@@ -1640,6 +1661,7 @@ function saveFuzzySearchSettings() {
 			JSON.stringify({
 				threshold: fuzzySearchThreshold.value,
 				distance: fuzzySearchDistance.value,
+				algorithm: fuzzySearchAlgorithm.value,
 			})
 		);
 	} catch (error) {
@@ -1652,6 +1674,7 @@ async function applyFuzzySearchConfig() {
 		await offlineWorker.configureFuzzySearch({
 			threshold: fuzzySearchThreshold.value,
 			distance: fuzzySearchDistance.value,
+			algorithm: fuzzySearchAlgorithm.value,
 		});
 		saveFuzzySearchSettings();
 	} catch (error) {
@@ -1675,6 +1698,10 @@ watch(fuzzySearchThreshold, () => {
 });
 
 watch(fuzzySearchDistance, () => {
+	applyFuzzySearchConfig();
+});
+
+watch(fuzzySearchAlgorithm, () => {
 	applyFuzzySearchConfig();
 });
 

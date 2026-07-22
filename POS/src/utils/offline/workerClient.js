@@ -75,6 +75,7 @@ class OfflineWorkerClient {
 							this.configureFuzzySearch({
 								threshold: parsed.threshold ?? 0.5,
 								distance: parsed.distance ?? 200,
+								algorithm: parsed.algorithm ?? "partial_token_set_ratio",
 							});
 						}
 					} catch (e) {
@@ -619,8 +620,8 @@ class OfflineWorkerClient {
 		return this.sendMessage("CLEAR_OFFERS_CACHE", { posProfile });
 	}
 
-	async configureFuzzySearch({ threshold, distance }) {
-		return this.sendMessage("CONFIGURE_FUZZY_SEARCH", { threshold, distance });
+	async configureFuzzySearch({ threshold, distance, algorithm }) {
+		return this.sendMessage("CONFIGURE_FUZZY_SEARCH", { threshold, distance, algorithm });
 	}
 
 	terminate() {

@@ -1345,10 +1345,37 @@ async function loadAvailability() {
 function highlightMatch(text, query) {
 	if (!text || !query) return text;
 
-	const queryWords = query.toLowerCase().split(/\s+/).filter(Boolean);
+	// Split the query into individual words/tokens
+	const queryWords = query
+		.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+		.split(/\s+/)
+		.filter((w) => w.length >= 2); // Only highlight tokens of 2+ characters to avoid highlight spam
+
 	if (queryWords.length === 0) return text;
 
-	// Helper for Levenshtein distance
+	// Sort query words by length descending so we match longer phrases first
+	queryWords.sort((a, b) => b.length - a.length);
+
+	let highlighted = text;
+	const placeholders = [];
+
+	// Helper to add a highlight and return a placeholder
+	const addHighlight = (match) => {
+		const placeholder = `__MARK_PLACEHOLDER_${placeholders.length}__`;
+		placeholders.push({
+			placeholder,
+			html: `<mark class="bg-yellow-200 text-yellow-900 rounded px-0.5">${match}</mark>`
+		});
+		return placeholder;
+	};
+
+	// Phase 1: Exact substring highlighting for each query word
+	for (const qWord of queryWords) {
+		const regex = new RegExp(`(${qWord})`, "gi");
+		highlighted = highlighted.replace(regex, (match) => addHighlight(match));
+	}
+
+	// Phase 2: Fuzzy matching for words/segments that didn't match exactly (e.g. typos like "itm" matching "item")
 	const getLevenshtein = (a, b) => {
 		const matrix = [];
 		for (let i = 0; i <= b.length; i++) matrix[i] = [i];
@@ -1359,9 +1386,9 @@ function highlightMatch(text, query) {
 					matrix[i][j] = matrix[i - 1][j - 1];
 				} else {
 					matrix[i][j] = Math.min(
-						matrix[i - 1][j - 1] + 1, // substitution
-						matrix[i][j - 1] + 1,     // insertion
-						matrix[i - 1][j] + 1      // deletion
+						matrix[i - 1][j - 1] + 1,
+						matrix[i][j - 1] + 1,
+						matrix[i - 1][j] + 1
 					);
 				}
 			}
@@ -1369,42 +1396,42 @@ function highlightMatch(text, query) {
 		return matrix[b.length][a.length];
 	};
 
-	const textWords = text.split(/\s+/);
-	const highlightedWords = textWords.map((textWord) => {
-		// Strip punctuation for matching comparison
-		const cleanWord = textWord.toLowerCase().replace(/[^a-z0-9]/g, "");
-		if (!cleanWord) return textWord;
+	// Split by non-word characters to get individual alphanumeric segments for fuzzy matching
+	const segments = highlighted.split(/([a-zA-Z0-9]+)/);
+	
+	for (let i = 0; i < segments.length; i++) {
+		const seg = segments[i];
+		if (/^[a-zA-Z0-9]+$/.test(seg) && !seg.startsWith("__MARK_PLACEHOLDER_")) {
+			const lowerSeg = seg.toLowerCase();
+			
+			for (const qWord of queryWords) {
+				// Skip if it contains or is contained exactly (already handled in Phase 1)
+				if (lowerSeg.includes(qWord) || qWord.includes(lowerSeg)) {
+					continue;
+				}
 
-		let bestMatch = false;
-		for (const qWord of queryWords) {
-			const cleanQ = qWord.replace(/[^a-z0-9]/g, "");
-			if (!cleanQ) continue;
+				if (qWord.length >= 3 && lowerSeg.length >= 3) {
+					const dist = getLevenshtein(qWord, lowerSeg);
+					const maxLen = Math.max(qWord.length, lowerSeg.length);
+					const similarity = 1 - dist / maxLen;
 
-			// Check 1: Exact substring containment
-			if (cleanWord.includes(cleanQ) || cleanQ.includes(cleanWord)) {
-				bestMatch = true;
-				break;
-			}
-
-			// Check 2: Fuzzy Levenshtein similarity for typos
-			if (cleanQ.length > 2 && cleanWord.length > 2) {
-				const dist = getLevenshtein(cleanQ, cleanWord);
-				const maxLen = Math.max(cleanQ.length, cleanWord.length);
-				const similarity = 1 - dist / maxLen;
-				if (similarity > 0.6) { // 60% similarity threshold
-					bestMatch = true;
-					break;
+					if (similarity >= 0.6) { // 60% similarity threshold
+						segments[i] = addHighlight(seg);
+						break;
+					}
 				}
 			}
 		}
+	}
+	
+	highlighted = segments.join("");
 
-		if (bestMatch) {
-			return `<mark class="bg-yellow-200 text-yellow-900 rounded px-0.5">${textWord}</mark>`;
-		}
-		return textWord;
-	});
+	// Restore placeholders in reverse order
+	for (let i = placeholders.length - 1; i >= 0; i--) {
+		highlighted = highlighted.replace(placeholders[i].placeholder, placeholders[i].html);
+	}
 
-	return highlightedWords.join(" ");
+	return highlighted;
 }
 
 /**

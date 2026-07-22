@@ -1,3 +1,4 @@
+from frappe.utils import cint
 # Copyright (c) 2024, POS Next and contributors
 # For license information, please see license.txt
 

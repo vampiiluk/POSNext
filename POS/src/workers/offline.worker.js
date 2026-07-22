@@ -19,6 +19,7 @@
 
 import { logger } from "../utils/logger";
 import { generateOfflineId } from "../utils/offline/uuid";
+import Fuse from "fuse.js";
 
 const log = logger.create("OfflineWorker");
 
@@ -50,6 +51,66 @@ let dbInitPromise = null;
 
 /** @type {Map<string, {value: any, timestamp: number}>} Query result cache */
 const queryCache = new Map();
+
+/** @type {Fuse|null} Fuse.js fuzzy search index (built lazily from cached items) */
+let fuseIndex = null;
+
+/** @type {boolean} Whether the Fuse index needs rebuilding */
+let fuseIndexDirty = true;
+
+/** Fuse.js configuration — tuned to match advanced_search.py behavior */
+const FUSE_CONFIG = {
+	keys: [
+		{ name: "item_code", weight: 2.0 },
+		{ name: "item_name", weight: 1.5 },
+		{ name: "description", weight: 0.7 },
+	],
+	threshold: 0.4,        // 0 = exact, 1 = match anything. 0.4 ≈ 60% similarity
+	distance: 200,         // How far to search within a string
+	minMatchCharLength: 2, // Ignore single-char queries for fuzzy
+	ignoreLocation: true,  // Match anywhere in the string, not just near the start
+	useExtendedSearch: false,
+	includeScore: true,
+};
+
+/**
+ * Build or rebuild the Fuse.js index from all cached items in IndexedDB.
+ * Called lazily on first search or after items are cached/cleared.
+ * @returns {Promise<Fuse>} The built Fuse index
+ */
+async function buildFuseIndex() {
+	const startTime = performance.now();
+	try {
+		const database = await initDB();
+		const allItems = await database
+			.table("items")
+			.filter((item) => !item.disabled)
+			.toArray();
+
+		fuseIndex = new Fuse(allItems, FUSE_CONFIG);
+		fuseIndexDirty = false;
+
+		const duration = Math.round(performance.now() - startTime);
+		log.success(`Fuse.js index built: ${allItems.length} items in ${duration}ms`);
+		return fuseIndex;
+	} catch (error) {
+		log.error("Failed to build Fuse.js index", error);
+		fuseIndex = null;
+		fuseIndexDirty = true;
+		return null;
+	}
+}
+
+/**
+ * Get the Fuse index, building it if needed.
+ * @returns {Promise<Fuse|null>} The Fuse index or null on failure
+ */
+async function getFuseIndex() {
+	if (!fuseIndex || fuseIndexDirty) {
+		return await buildFuseIndex();
+	}
+	return fuseIndex;
+}
 
 /** @type {Map<string, {count: number, totalTime: number, errors: number}>} Performance metrics */
 const metrics = new Map();
@@ -491,13 +552,19 @@ function shouldShowItem(item) {
 }
 
 /**
- * Search cached items with intelligent query optimization
- * - Query result caching (5x faster for repeated searches)
- * - Index-based search (O(log n) for single-word queries)
- * - Relevance scoring for better results
+ * Search cached items with intelligent query optimization + Fuse.js fuzzy search
+ *
+ * Search pipeline (3 phases, matching advanced_search.py logic):
+ *   Phase 1: Barcode index O(1) lookup (unchanged, fastest path)
+ *   Phase 2: Dexie indexed prefix search on item_code/item_name (fast exact match)
+ *   Phase 3: Fuse.js fuzzy search (typo-tolerant, word-order independent)
+ *
+ * Fuse.js is only used as a fallback when Phases 1 & 2 return 0 results,
+ * so there is zero performance impact on normal exact-match searches.
  *
  * @param {string} searchTerm - Search query
  * @param {number} limit - Max results
+ * @param {number} offset - Offset for pagination
  * @returns {Promise<Array>} Matching items
  */
 async function searchCachedItems(searchTerm = "", limit = 50, offset = 0) {
@@ -515,7 +582,6 @@ async function searchCachedItems(searchTerm = "", limit = 50, offset = 0) {
 		const db = await initDB();
 
 		// Empty search - return top N items sorted alphabetically
-		// Exclude disabled and template items (templates are not shown in grid, variants are)
 		if (!searchTerm || searchTerm.trim().length === 0) {
 			const results = await db
 				.table("items")
@@ -531,9 +597,9 @@ async function searchCachedItems(searchTerm = "", limit = 50, offset = 0) {
 		const term = searchTerm.toLowerCase().trim();
 		const searchWords = term.split(/\s+/).filter(Boolean);
 
-		// Optimize: Use indexes for single-word searches
+		// ── Phase 1 & 2: Indexed lookups (barcode → item_code → item_name) ──
 		if (searchWords.length === 1) {
-			// Try barcode index first (most specific)
+			// Phase 1: Barcode index (O(1) — most specific)
 			const barcodeResults = await db
 				.table("items")
 				.where("barcodes")
@@ -548,7 +614,7 @@ async function searchCachedItems(searchTerm = "", limit = 50, offset = 0) {
 				return barcodeResults;
 			}
 
-			// Try item_code index (second most specific)
+			// Phase 2a: item_code prefix index
 			const codeResults = await db
 				.table("items")
 				.where("item_code")
@@ -563,7 +629,7 @@ async function searchCachedItems(searchTerm = "", limit = 50, offset = 0) {
 				return codeResults;
 			}
 
-			// Try item_name index
+			// Phase 2b: item_name prefix index
 			const nameResults = await db
 				.table("items")
 				.where("item_name")
@@ -579,26 +645,23 @@ async function searchCachedItems(searchTerm = "", limit = 50, offset = 0) {
 			}
 		}
 
-		// Fallback: Multi-word or complex search
-		// Fetch larger sample and filter in memory (trade memory for speed)
+		// ── Phase 2c: Multi-word substring match (existing logic) ──
 		const allItems = await db
 			.table("items")
 			.filter((item) => !item.disabled)
 			.limit(limit * 10)
 			.toArray();
 
-		const results = allItems
+		const substringResults = allItems
 			.map((item) => {
 				const searchable = `${item.item_code || ""} ${item.item_name || ""} ${
 					item.description || ""
 				}`.toLowerCase();
 
-				// All words must match
 				if (!searchWords.every((word) => searchable.includes(word))) {
 					return null;
 				}
 
-				// Score for relevance ranking
 				let score = 100;
 				if (item.item_name?.toLowerCase() === term) score = 1000;
 				else if (item.item_code?.toLowerCase() === term) score = 900;
@@ -612,11 +675,37 @@ async function searchCachedItems(searchTerm = "", limit = 50, offset = 0) {
 			.slice(0, limit)
 			.map(({ item }) => item);
 
+		if (substringResults.length > 0) {
+			const duration = Math.round(performance.now() - startTime);
+			recordMetric("searchCachedItems", duration, false);
+			cacheQueryResult(cacheKey, substringResults);
+			return substringResults;
+		}
+
+		// ── Phase 3: Fuse.js fuzzy search (typo-tolerant fallback) ──
+		// Only reached when Phases 1, 2, and 2c all returned 0 results.
+		// This catches typos like "samsoong" → "Samsung", "del i5" → "Dell i5 Laptop"
+		const fuse = await getFuseIndex();
+		if (fuse) {
+			const fuseResults = fuse.search(searchTerm, { limit });
+			const fuzzyItems = fuseResults
+				.filter((r) => shouldShowItem(r.item))
+				.map((r) => r.item);
+
+			if (fuzzyItems.length > 0) {
+				const duration = Math.round(performance.now() - startTime);
+				recordMetric("searchCachedItems", duration, false);
+				log.debug(`Fuzzy search matched ${fuzzyItems.length} items for "${searchTerm}"`);
+				cacheQueryResult(cacheKey, fuzzyItems);
+				return fuzzyItems;
+			}
+		}
+
+		// No results from any phase
 		const duration = Math.round(performance.now() - startTime);
 		recordMetric("searchCachedItems", duration, false);
-
-		cacheQueryResult(cacheKey, results);
-		return results;
+		cacheQueryResult(cacheKey, []);
+		return [];
 	} catch (error) {
 		recordMetric("searchCachedItems", performance.now() - startTime, true);
 		log.error("Error searching cached items", error);
@@ -924,9 +1013,10 @@ async function cacheItemsFromServer(items, batchSize) {
 		const duration = Math.round(performance.now() - startTime);
 		recordMetric("cacheItems", duration, false);
 
-		// Invalidate query cache
+		// Invalidate query cache and Fuse index
 		invalidateCache("search:");
 		invalidateCache("items:");
+		fuseIndexDirty = true;
 
 		log.success(`Cached ${totalProcessed} items in ${duration}ms`, {
 			batches: batches.length,
@@ -1009,6 +1099,7 @@ async function clearItemsCache() {
 
 		invalidateCache("items");
 		invalidateCache("search");
+		fuseIndexDirty = true;
 
 		log.info("Items cache cleared");
 		return { success: true };

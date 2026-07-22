@@ -408,7 +408,7 @@ def search_by_barcode(barcode, pos_profile):
 			barcode_uom = None
 
 		if not item_code:
-			frappe.throw(_("Item with barcode {0} not found").format(barcode))
+			return None
 
 		# Get POS Profile details
 		pos_profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)

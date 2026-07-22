@@ -687,7 +687,7 @@ async function searchCachedItems(searchTerm = "", limit = 50, offset = 0) {
 		// This catches typos like "samsoong" → "Samsung", "del i5" → "Dell i5 Laptop"
 		const fuse = await getFuseIndex();
 		if (fuse) {
-			const fuseResults = fuse.search(searchTerm, { limit });
+			const fuseResults = fuse.search(term, { limit });
 			const fuzzyItems = fuseResults
 				.filter((r) => shouldShowItem(r.item))
 				.map((r) => r.item);
@@ -695,7 +695,7 @@ async function searchCachedItems(searchTerm = "", limit = 50, offset = 0) {
 			if (fuzzyItems.length > 0) {
 				const duration = Math.round(performance.now() - startTime);
 				recordMetric("searchCachedItems", duration, false);
-				log.debug(`Fuzzy search matched ${fuzzyItems.length} items for "${searchTerm}"`);
+				log.debug(`Fuzzy search matched ${fuzzyItems.length} items for "${term}"`);
 				cacheQueryResult(cacheKey, fuzzyItems);
 				return fuzzyItems;
 			}
@@ -1778,6 +1778,30 @@ function getStockSyncStatus() {
 	};
 }
 
+/**
+ * Configure Fuse.js fuzzy search settings dynamically
+ */
+function configureFuzzySearch({ threshold, distance }) {
+	let changed = false;
+	if (threshold !== undefined && FUSE_CONFIG.threshold !== parseFloat(threshold)) {
+		FUSE_CONFIG.threshold = parseFloat(threshold);
+		changed = true;
+	}
+	if (distance !== undefined && FUSE_CONFIG.distance !== parseInt(distance)) {
+		FUSE_CONFIG.distance = parseInt(distance);
+		changed = true;
+	}
+	if (changed) {
+		fuseIndexDirty = true;
+		invalidateCache("search:");
+		log.debug(`Fuzzy search reconfigured: threshold=${FUSE_CONFIG.threshold}, distance=${FUSE_CONFIG.distance}`);
+	}
+	return {
+		threshold: FUSE_CONFIG.threshold,
+		distance: FUSE_CONFIG.distance,
+	};
+}
+
 // Message handler
 self.onmessage = async (event) => {
 	const { type, payload, id } = event.data;
@@ -1786,6 +1810,10 @@ self.onmessage = async (event) => {
 		let result;
 
 		switch (type) {
+			case "CONFIGURE_FUZZY_SEARCH":
+				result = configureFuzzySearch(payload);
+				break;
+
 			case "SET_CSRF_TOKEN":
 				csrfToken = payload.token;
 				result = { success: true };

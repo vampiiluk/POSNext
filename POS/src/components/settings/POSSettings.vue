@@ -538,6 +538,56 @@
 											</div>
 										</div>
 									</div>
+
+									<!-- Fuzzy Search Settings -->
+									<div :class="fuzzySearchSubsectionClasses.container">
+										<div class="flex items-center gap-2 mb-4">
+											<svg
+												:class="fuzzySearchSubsectionClasses.icon"
+												fill="none"
+												stroke="currentColor"
+												viewBox="0 0 24 24"
+											>
+												<path
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													stroke-width="2"
+													d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+												/>
+											</svg>
+											<h4 class="text-sm font-semibold text-gray-900">
+												{{ __("Fuzzy Search Settings") }}
+											</h4>
+										</div>
+
+										<div class="flex flex-col gap-4">
+											<NumberField
+												v-model="fuzzySearchThreshold"
+												:label="__('Fuzzy Search Threshold (0.1 - 1.0)')"
+												:description="
+													__(
+														'A lower value is more strict (e.g. 0.3). A higher value is more lenient (e.g. 0.6). Recommended: 0.5'
+													)
+												"
+												:min="0.1"
+												:max="1.0"
+												:step="0.05"
+											/>
+
+											<NumberField
+												v-model="fuzzySearchDistance"
+												:label="__('Fuzzy Search Distance (0 - 1000)')"
+												:description="
+													__(
+														'Max character distance to check for fuzzy matches. Recommended: 200'
+													)
+												"
+												:min="0"
+												:max="1000"
+												:step="50"
+											/>
+										</div>
+									</div>
 								</div>
 							</div>
 
@@ -1199,6 +1249,10 @@ const settings = ref({
 	tax_inclusive: 0,
 });
 
+// Fuzzy Search Settings (localStorage persisted)
+const fuzzySearchThreshold = ref(0.5); // Default 0.5
+const fuzzySearchDistance = ref(200);  // Default 200
+
 // Stock Sync Settings (localStorage persisted)
 const stockSyncEnabled = ref(false);
 const stockSyncIntervalSeconds = ref(60); // Default 60 seconds
@@ -1245,6 +1299,7 @@ const stockPolicySubsectionClasses = computed(() => getSubsectionClasses("blue")
 const stockSyncSubsectionClasses = computed(() => getSubsectionClasses("indigo"));
 const pricingSubsectionClasses = computed(() => getSubsectionClasses("emerald"));
 const operationsSubsectionClasses = computed(() => getSubsectionClasses("teal"));
+const fuzzySearchSubsectionClasses = computed(() => getSubsectionClasses("teal"));
 
 // Resources
 const warehousesResource = createResource({
@@ -1564,6 +1619,46 @@ function formatSyncTime(timestamp) {
 	}
 }
 
+// Fuzzy Search Settings Management
+function loadFuzzySearchSettings() {
+	try {
+		const saved = localStorage.getItem("pos_fuzzy_search_settings");
+		if (saved) {
+			const parsed = JSON.parse(saved);
+			fuzzySearchThreshold.value = parsed.threshold ?? 0.5;
+			fuzzySearchDistance.value = parsed.distance ?? 200;
+		}
+	} catch (error) {
+		log.error("Failed to load fuzzy search settings:", error);
+	}
+}
+
+function saveFuzzySearchSettings() {
+	try {
+		localStorage.setItem(
+			"pos_fuzzy_search_settings",
+			JSON.stringify({
+				threshold: fuzzySearchThreshold.value,
+				distance: fuzzySearchDistance.value,
+			})
+		);
+	} catch (error) {
+		log.error("Failed to save fuzzy search settings:", error);
+	}
+}
+
+async function applyFuzzySearchConfig() {
+	try {
+		await offlineWorker.configureFuzzySearch({
+			threshold: fuzzySearchThreshold.value,
+			distance: fuzzySearchDistance.value,
+		});
+		saveFuzzySearchSettings();
+	} catch (error) {
+		log.error("Failed to apply fuzzy search config:", error);
+	}
+}
+
 // Watch for changes and apply
 watch(stockSyncEnabled, () => {
 	applyStockSyncConfig();
@@ -1575,10 +1670,20 @@ watch(stockSyncIntervalSeconds, () => {
 	}
 });
 
+watch(fuzzySearchThreshold, () => {
+	applyFuzzySearchConfig();
+});
+
+watch(fuzzySearchDistance, () => {
+	applyFuzzySearchConfig();
+});
+
 // Lifecycle hooks
 onMounted(async () => {
 	// Load settings
 	loadStockSyncSettings();
+	loadFuzzySearchSettings();
+	applyFuzzySearchConfig();
 
 	// Update status initially
 	await updateStockSyncStatus();

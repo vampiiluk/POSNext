@@ -66,6 +66,21 @@ class OfflineWorkerClient {
 						serverOnline: payload.serverOnline,
 						manualOffline: payload.manualOffline || false,
 					});
+
+					// Restore saved fuzzy search settings to worker
+					try {
+						const savedFuzzy = localStorage.getItem("pos_fuzzy_search_settings");
+						if (savedFuzzy) {
+							const parsed = JSON.parse(savedFuzzy);
+							this.configureFuzzySearch({
+								threshold: parsed.threshold ?? 0.5,
+								distance: parsed.distance ?? 200,
+							});
+						}
+					} catch (e) {
+						log.error("Failed to restore fuzzy settings on worker ready", e);
+					}
+
 					log.success("Offline worker ready", { serverOnline: payload.serverOnline });
 					return;
 				}
@@ -602,6 +617,10 @@ class OfflineWorkerClient {
 	 */
 	async clearOffersCache(posProfile = null) {
 		return this.sendMessage("CLEAR_OFFERS_CACHE", { posProfile });
+	}
+
+	async configureFuzzySearch({ threshold, distance }) {
+		return this.sendMessage("CONFIGURE_FUZZY_SEARCH", { threshold, distance });
 	}
 
 	terminate() {

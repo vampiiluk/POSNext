@@ -1345,12 +1345,66 @@ async function loadAvailability() {
 function highlightMatch(text, query) {
 	if (!text || !query) return text;
 
-	const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const regex = new RegExp(`(${escapedQuery})`, "gi");
-	return text.replace(
-		regex,
-		'<mark class="bg-yellow-200 text-yellow-900 rounded px-0.5">$1</mark>'
-	);
+	const queryWords = query.toLowerCase().split(/\s+/).filter(Boolean);
+	if (queryWords.length === 0) return text;
+
+	// Helper for Levenshtein distance
+	const getLevenshtein = (a, b) => {
+		const matrix = [];
+		for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+		for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+		for (let i = 1; i <= b.length; i++) {
+			for (let j = 1; j <= a.length; j++) {
+				if (b.charAt(i - 1) === a.charAt(j - 1)) {
+					matrix[i][j] = matrix[i - 1][j - 1];
+				} else {
+					matrix[i][j] = Math.min(
+						matrix[i - 1][j - 1] + 1, // substitution
+						matrix[i][j - 1] + 1,     // insertion
+						matrix[i - 1][j] + 1      // deletion
+					);
+				}
+			}
+		}
+		return matrix[b.length][a.length];
+	};
+
+	const textWords = text.split(/\s+/);
+	const highlightedWords = textWords.map((textWord) => {
+		// Strip punctuation for matching comparison
+		const cleanWord = textWord.toLowerCase().replace(/[^a-z0-9]/g, "");
+		if (!cleanWord) return textWord;
+
+		let bestMatch = false;
+		for (const qWord of queryWords) {
+			const cleanQ = qWord.replace(/[^a-z0-9]/g, "");
+			if (!cleanQ) continue;
+
+			// Check 1: Exact substring containment
+			if (cleanWord.includes(cleanQ) || cleanQ.includes(cleanWord)) {
+				bestMatch = true;
+				break;
+			}
+
+			// Check 2: Fuzzy Levenshtein similarity for typos
+			if (cleanQ.length > 2 && cleanWord.length > 2) {
+				const dist = getLevenshtein(cleanQ, cleanWord);
+				const maxLen = Math.max(cleanQ.length, cleanWord.length);
+				const similarity = 1 - dist / maxLen;
+				if (similarity > 0.6) { // 60% similarity threshold
+					bestMatch = true;
+					break;
+				}
+			}
+		}
+
+		if (bestMatch) {
+			return `<mark class="bg-yellow-200 text-yellow-900 rounded px-0.5">${textWord}</mark>`;
+		}
+		return textWord;
+	});
+
+	return highlightedWords.join(" ");
 }
 
 /**

@@ -27,6 +27,9 @@ def after_install():
 		# Setup default print format for POS Profiles
 		setup_default_print_format()
 
+		# Ensure roles that manage POS Profiles can create them
+		setup_pos_profile_permissions()
+
 		# Link the POSNext desktop icon to the pos_next app
 		setup_desktop_icon()
 
@@ -53,6 +56,9 @@ def after_migrate():
 
 		# Setup default print format
 		setup_default_print_format(quiet=True)
+
+		# Ensure roles that manage POS Profiles can create them
+		setup_pos_profile_permissions(quiet=True)
 
 		# Link the POSNext desktop icon to the pos_next app
 		setup_desktop_icon(quiet=True)
@@ -113,6 +119,123 @@ def setup_default_print_format(quiet=False):
 	except Exception as e:
 		log_message(f"Error setting up default print format: {str(e)}", level="error")
 		frappe.log_error(title="Default Print Format Setup Error", message=frappe.get_traceback())
+
+
+POS_PROFILE_PERMISSIONS = {
+	"Administrator": {
+		"create": 1, "read": 1, "write": 1, "report": 1, "export": 1, "delete": 0,
+	},
+	"System Manager": {
+		"create": 1, "read": 1, "write": 1, "report": 1, "export": 1, "delete": 0,
+	},
+	"Accounts Manager": {
+		"create": 1, "read": 1, "write": 1, "report": 1, "export": 1, "delete": 0,
+	},
+	"Accounts User": {
+		"read": 1,
+	},
+}
+
+
+def setup_pos_profile_permissions(quiet=False):
+	"""
+	Ensure roles that manage POS Profiles can create them.
+
+	Frappe v16+ treats `Custom DocPerm` as the authoritative permission
+	store. POS Next's fixture only ships a POSNext Cashier row (read-only),
+	which prevents `setup_custom_perms` from copying the legacy `tabDocPerm`
+	rows — leaving no role with create access and hiding the "+ New" button
+	on the POS Profile list.
+
+	Idempotent upsert: skips any existing (role, permlevel, if_owner) row and
+	never touches POSNext Cashier rows. Also usable as a repair script:
+
+	    bench --site <site> execute pos_next.install.setup_pos_profile_permissions
+
+	Args:
+		quiet (bool): If True, suppress detailed logs
+
+	Returns:
+		int: number of permission rows added
+	"""
+	doctype = "POS Profile"
+	existing_rows = {
+		(row.role, row.permlevel, row.if_owner)
+		for row in frappe.db.sql(
+			"""select role, permlevel, if_owner from `tabCustom DocPerm`
+			where parent = %s""",
+			doctype,
+			as_dict=True,
+		)
+	}
+
+	added = 0
+	for role, perms in POS_PROFILE_PERMISSIONS.items():
+		key = (role, 0, 0)
+		if key in existing_rows:
+			continue
+
+		doc = frappe.new_doc("Custom DocPerm")
+		doc.parent = doctype
+		doc.parenttype = "DocType"
+		doc.parentfield = "permissions"
+		doc.role = role
+		doc.permlevel = 0
+		doc.if_owner = 0
+		doc.create = perms.get("create", 0)
+		doc.read = perms.get("read", 0)
+		doc.write = perms.get("write", 0)
+		doc.report = perms.get("report", 0)
+		doc.export = perms.get("export", 0)
+		doc.delete = perms.get("delete", 0)
+		doc.insert(ignore_permissions=True)
+		existing_rows.add(key)
+		added += 1
+		if not quiet:
+			log_message(f"Added POS Profile permission for role: {role}", level="info", indent=1)
+
+	if added:
+		from frappe.core.doctype.doctype.doctype import validate_permissions_for_doctype
+
+		validate_permissions_for_doctype(doctype)
+		frappe.clear_cache()
+
+	frappe.db.commit()
+
+	if not quiet:
+		log_message(
+			f"POS Profile permissions up to date ({added} row(s) added)",
+			level="success" if added else "info",
+		)
+	return added
+
+
+def verify_pos_profile_permissions():
+	"""
+	Check that all expected POS Profile permission rows exist and are correct.
+
+	Returns:
+		list: missing or mismatched (role, permission) tuples; empty when OK
+	"""
+	rows = frappe.db.sql(
+		"""select role, `create`, `read`, `write`, report, export, `delete`
+		from `tabCustom DocPerm`
+		where parent = 'POS Profile' and permlevel = 0 and if_owner = 0""",
+		as_dict=True,
+	)
+	by_role = {row.role: row for row in rows}
+
+	missing = []
+	for role, perms in POS_PROFILE_PERMISSIONS.items():
+		row = by_role.get(role)
+		if not row:
+			missing.append((role, "row missing"))
+			continue
+		for ptype, expected in perms.items():
+			if row.get(ptype) != expected:
+				missing.append((role, ptype))
+
+	return missing
 
 
 def log_message(message, level="info", indent=0):

@@ -1,0 +1,160 @@
+{
+ "app": "pos_next",
+ "doctype": "Workspace Sidebar",
+ "header_icon": "shopping-cart",
+ "items": [  {
+   "child": 0,
+   "collapsible": 0,
+   "icon": "home",
+   "idx": 1,
+   "label": "Home",
+   "link_to": "POSNext",
+   "link_type": "Workspace",
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 0,
+   "icon": "shopping-cart",
+   "idx": 2,
+   "label": "Start POS",
+   "link_type": "URL",
+   "type": "Link",
+   "url": "/pos/"
+  },
+  {
+   "child": 0,
+   "collapsible": 0,
+   "icon": "package",
+   "idx": 3,
+   "label": "Item",
+   "link_to": "Item",
+   "link_type": "DocType",
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 0,
+   "icon": "settings",
+   "idx": 4,
+   "label": "Pos Settings",
+   "link_to": "POS Settings",
+   "link_type": "DocType",
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 0,
+   "icon": "receipt",
+   "idx": 5,
+   "label": "Pos Profile",
+   "link_to": "POS Profile",
+   "link_type": "DocType",
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 0,
+   "icon": "log-in",
+   "idx": 6,
+   "label": "Pos Opening Shift",
+   "link_to": "POS Opening Shift",
+   "link_type": "DocType",
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 0,
+   "icon": "log-out",
+   "idx": 7,
+   "label": "Pos Closing Shift",
+   "link_to": "POS Closing Shift",
+   "link_type": "DocType",
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 0,
+   "icon": "badge-percent",
+   "idx": 8,
+   "label": "Promotional Scheme",
+   "link_to": "Promotional Scheme",
+   "link_type": "DocType",
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 0,
+   "icon": "ticket",
+   "idx": 9,
+   "label": "Pos Coupon",
+   "link_to": "POS Coupon",
+   "link_type": "DocType",
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 0,
+   "icon": "wallet",
+   "idx": 10,
+   "label": "Wallet",
+   "link_to": "Wallet",
+   "link_type": "DocType",
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 0,
+   "icon": "arrow-left-right",
+   "idx": 11,
+   "label": "Wallet Transaction",
+   "link_to": "Wallet Transaction",
+   "link_type": "DocType",
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 0,
+   "icon": "banknote",
+   "idx": 12,
+   "label": "Bank Deposits",
+   "link_to": "Bank Deposits",
+   "link_type": "DocType",
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 0,
+   "icon": "refresh-cw",
+   "idx": 13,
+   "label": "Offline Invoice Sync",
+   "link_to": "Offline Invoice Sync",
+   "link_type": "DocType",
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 0,
+   "icon": "user-plus",
+   "idx": 14,
+   "label": "Referral Code",
+   "link_to": "Referral Code",
+   "link_type": "DocType",
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 0,
+   "icon": "history",
+   "idx": 15,
+   "label": "One Time Customer Offer Usage",
+   "link_to": "One Time Customer Offer Usage",
+   "link_type": "DocType",
+   "type": "Link"
+  }
+ ],
+  "module": "POS Next",
+  "name": "POSNext",
+  "standard": 1,
+  "title": "POSNext"
+}

@@ -27,6 +27,9 @@ def after_install():
 		# Setup default print format for POS Profiles
 		setup_default_print_format()
 
+		# Link the POSNext desktop icon to the pos_next app
+		setup_desktop_icon()
+
 		# Clear cache to ensure changes take effect
 		frappe.clear_cache()
 		frappe.db.commit()
@@ -50,6 +53,9 @@ def after_migrate():
 
 		# Setup default print format
 		setup_default_print_format(quiet=True)
+
+		# Link the POSNext desktop icon to the pos_next app
+		setup_desktop_icon(quiet=True)
 
 		# Clear cache
 		frappe.clear_cache()
@@ -140,6 +146,46 @@ def log_message(message, level="info", indent=0):
 		logger.warning(message)
 	else:
 		logger.info(message)
+
+
+def setup_desktop_icon(quiet=False):
+	"""
+	Link the POSNext Desktop Icon record to the pos_next app so the desk
+	renders the app icon (assets/pos_next/icons/desktop_icons/...) instead
+	of falling back to the label's initial letter.
+
+	Args:
+		quiet (bool): If True, suppress detailed logs
+	"""
+	try:
+		if frappe.db.exists("Desktop Icon", "POSNext"):
+			if frappe.db.get_value("Desktop Icon", "POSNext", "app") != "pos_next":
+				frappe.db.set_value(
+					"Desktop Icon", "POSNext", "app", "pos_next", update_modified=False
+				)
+				if not quiet:
+					log_message("Linked POSNext Desktop Icon to pos_next app", level="info")
+		else:
+			frappe.get_doc(
+				{
+					"doctype": "Desktop Icon",
+					"label": "POSNext",
+					"icon_type": "Link",
+					"link_type": "Workspace Sidebar",
+					"link_to": "POSNext",
+					"icon": "shopping-cart",
+					"app": "pos_next",
+					"standard": 0,
+					"hidden": 0,
+					"restrict_removal": 0,
+					"bg_color": "gray",
+				}
+			).insert(ignore_permissions=True)
+			if not quiet:
+				log_message("Created POSNext Desktop Icon linked to pos_next app", level="info")
+	except Exception as e:
+		log_message(f"Error setting up POSNext desktop icon: {str(e)}", level="error")
+		frappe.log_error(title="Desktop Icon Setup Error", message=frappe.get_traceback())
 
 
 def reclaim_pos_settings_doctype(quiet=False):

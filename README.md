@@ -16,6 +16,39 @@
 
 ---
 
+## What's New in This Fork
+
+> This is the **vampiiluk/POSNext** fork, synced with upstream `develop`. It
+> ships everything upstream **plus** the changes below — ideal for merchants
+> who want a white-labeled, self-healing POS.
+
+- **Typo-tolerant fuzzy item search:** the offline search pipeline adds a
+  Fuse.js fallback phase, so misspellings like "samsoong" still match
+  "Samsung" — with zero impact on exact barcode/item-code lookups.
+- **Configurable fuzzy matching:** a "Fuzzy Search Settings" section in POS
+  Settings (threshold, distance, algorithm) is pushed to the offline worker at
+  runtime and restored on boot.
+- **Fuzzy-aware warehouse availability:** the availability dialog queries the
+  offline worker first and highlights matches using exact + Levenshtein fuzzy
+  highlighting with multi-word support.
+- **Self-healing install & migrate:** installs and re-applies on every `bench
+  migrate` — default print format, desktop icon, sidebar, and the "New" button
+  on POS Profile (which ERPNext's re-import otherwise wipes out).
+- **EOD report printing without QZ Tray:** when no QZ Tray printer is
+  configured, end-of-day printing falls back to a browser `/printview` popup
+  instead of silently failing.
+- **Coupons without a customer:** coupon redemption no longer forces you to
+  pick a customer first.
+- **White-label:** the upstream branding/licensing footer and the demo
+  countdown banner are removed.
+- **Rebranded workspace & sidebar:** POSNext sidebar with app icons and a
+  custom desktop icon.
+
+> Upstream's **Shift History** dialog (with filters and CSV export) was
+> restored in the latest sync — the fork no longer removes it.
+
+---
+
 ## Branches
 
 | Branch | Stability | Purpose |

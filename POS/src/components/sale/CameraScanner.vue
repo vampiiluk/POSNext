@@ -132,6 +132,8 @@ function positionPip() {
 }
 
 function startDrag(e) {
+	// Don't start drag if clicking a button inside the header
+	if (e.target.closest("button")) return;
 	// Handle both mouse and touch
 	const touch = e.touches ? e.touches[0] : e;
 	if (!touch) return;
@@ -323,7 +325,10 @@ async function toggleTorch() {
 	if (!track) return;
 
 	const capabilities = track.getCapabilities?.();
-	if (!capabilities?.torch) return;
+	if (!capabilities?.torch) {
+		// No torch support on this device — could show a toast here
+		return;
+	}
 
 	torchOn.value = !torchOn.value;
 	try {
@@ -331,7 +336,8 @@ async function toggleTorch() {
 			advanced: [{ torch: torchOn.value }],
 		});
 	} catch {
-		// Torch not supported
+		// Torch toggle failed
+		torchOn.value = !torchOn.value; // revert
 	}
 }
 

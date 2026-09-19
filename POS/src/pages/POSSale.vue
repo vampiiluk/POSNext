@@ -357,6 +357,8 @@
 								:cart-items="cartStore.invoiceItems"
 								:currency="shiftStore.profileCurrency"
 								@item-selected="handleItemSelected"
+								@open-camera="openCameraScanner"
+								@close-camera="showCameraScanner = false"
 							/>
 						</div>
 					</keep-alive>
@@ -481,6 +483,13 @@
 					<!-- PWA Install Badge (Mobile Only) -->
 					<InstallAppBadge />
 				</div>
+
+				<!-- Camera Scanner — rendered at page level so it survives mobile tab switches -->
+				<CameraScanner
+					:active="showCameraScanner"
+					@scan="handleCameraScan"
+					@close="showCameraScanner = false"
+				/>
 			</div>
 
 			<!-- No Shift Placeholder -->
@@ -1098,6 +1107,7 @@ import InvoiceHistoryDialog from "@/components/sale/InvoiceHistoryDialog.vue";
 import ShiftHistoryDialog from "@/components/sale/ShiftHistoryDialog.vue";
 import ItemSelectionDialog from "@/components/sale/ItemSelectionDialog.vue";
 import ItemsSelector from "@/components/sale/ItemsSelector.vue";
+import CameraScanner from "@/components/sale/CameraScanner.vue";
 import OffersDialog from "@/components/sale/OffersDialog.vue";
 import OfflineInvoicesDialog from "@/components/sale/OfflineInvoicesDialog.vue";
 import PaymentDialog from "@/components/sale/PaymentDialog.vue";
@@ -1203,6 +1213,16 @@ const pendingPaymentAfterCustomer = ref(false);
 const logoutAfterClose = ref(false);
 const editCustomer = ref(null); // Customer being edited (null for create mode)
 const showClearCacheDialog = ref(false);
+
+// Camera scanner — owned here so it survives mobile tab switches
+const showCameraScanner = ref(false);
+function openCameraScanner() {
+	showCameraScanner.value = true;
+}
+function handleCameraScan(barcode) {
+	if (!barcode || !itemsSelectorRef.value) return;
+	itemsSelectorRef.value.processBarcodeScan(barcode);
+}
 const clearCacheOverlayRef = ref(null);
 
 // Debounce timer for offer reapplication

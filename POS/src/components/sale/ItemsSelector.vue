@@ -1020,18 +1020,11 @@
 		:company="warehouseDialogItem.company"
 	/>
 
-	<!-- Camera Scanner -->
-	<CameraScanner
-		:active="showCameraScanner"
-		@scan="handleCameraScan"
-		@close="showCameraScanner = false"
-	/>
 </template>
 
 <script setup>
 import LazyImage from "@/components/common/LazyImage.vue";
 import WarehouseAvailabilityDialog from "@/components/sale/WarehouseAvailabilityDialog.vue";
-import CameraScanner from "@/components/sale/CameraScanner.vue";
 import { useItemSearchStore } from "@/stores/itemSearch";
 import { usePOSSettingsStore } from "@/stores/posSettings";
 import { useStock } from "@/composables/useStock";
@@ -1062,7 +1055,7 @@ const props = defineProps({
 	},
 });
 
-const emit = defineEmits(["item-selected"]);
+const emit = defineEmits(["item-selected", "open-camera"]);
 
 // Use composables
 const { getStockStatus } = useStock();
@@ -1130,13 +1123,15 @@ const cameraSupported = !!(navigator.mediaDevices && navigator.mediaDevices.getU
 watch(isAnyDialogOpen, (isOpen) => {
 	if (isOpen && showCameraScanner.value) {
 		showCameraScanner.value = false;
+		emit("close-camera");
 	}
 });
 
 function openCameraScanner() {
 	// Close any open dialogs first
 	if (isAnyDialogOpen.value) return;
-	showCameraScanner.value = true;
+	// Emit to parent — POSSale owns the camera state so it survives tab switches
+	emit("open-camera");
 }
 
 function handleCameraScan(barcode) {
@@ -1517,6 +1512,8 @@ defineExpose({
 	loadItemGroups: () => itemStore.loadItemGroups(),
 	loadMoreItems: () => itemStore.loadMoreItems(),
 	focusSearchInput,
+	// Expose processBarcodeScan so POSSale can feed camera scans into the barcode pipeline
+	processBarcodeScan: (barcode) => processBarcodeScan(barcode, autoAddEnabled.value),
 });
 
 // Watch for view mode changes and rebind scroll listeners

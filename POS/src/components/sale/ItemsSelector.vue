@@ -105,7 +105,7 @@
 					<!-- Barcode Scan Icon and Auto-Add Toggle -->
 					<div class="absolute inset-y-0 end-0 pe-1 sm:pe-2 flex items-center gap-0.5">
 						<button
-							v-if="hasCamera"
+							v-if="cameraSupported"
 							@click="openCameraScanner"
 							class="p-1 sm:p-1.5 rounded transition-[background-color] duration-75 touch-manipulation hover:bg-gray-100 active:bg-gray-200 text-gray-600"
 							:title="__('Open camera to scan barcode')"
@@ -1124,14 +1124,7 @@ const warehouseDialogItem = ref(null);
 
 // Camera scanner state
 const showCameraScanner = ref(false);
-const hasCamera = ref(false);
-
-// Check for camera support on mount
-onMounted(() => {
-	if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-		hasCamera.value = true;
-	}
-});
+const cameraSupported = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 
 // Close camera when other dialogs open
 watch(isAnyDialogOpen, (isOpen) => {

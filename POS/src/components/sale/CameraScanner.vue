@@ -204,7 +204,7 @@ async function startScanning() {
 			await videoEl.value.play();
 		}
 
-		// Try native BarcodeDetector first (Chrome, Edge, Android)
+		// Use native BarcodeDetector API (Chrome, Edge, Android, Opera)
 		if ("BarcodeDetector" in window) {
 			try {
 				const supported = await BarcodeDetector.getSupportedFormats();
@@ -218,19 +218,6 @@ async function startScanning() {
 				});
 			} catch {
 				detector = null;
-			}
-		}
-
-		// Fallback: dynamically import zxing-wasm
-		if (!detector) {
-			try {
-				const zxing = await import("@nicka/vue-zxing-wasm").catch(() => null)
-					|| await import("zxing-wasm").catch(() => null);
-				if (zxing) {
-					detector = { _zxing: zxing, _type: "zxing-wasm" };
-				}
-			} catch {
-				// No WASM fallback either
 			}
 		}
 
@@ -257,28 +244,6 @@ async function scanLoop() {
 			const barcodes = await detector.detect(videoEl.value);
 			if (barcodes && barcodes.length > 0) {
 				result = barcodes[0].rawValue;
-			}
-		}
-		// zxing-wasm fallback
-		else if (detector && detector._type === "zxing-wasm" && detector._zxing) {
-			const video = videoEl.value;
-			if (video.readyState >= 2) {
-				const canvas = new OffscreenCanvas(video.videoWidth, video.videoHeight);
-				const ctx = canvas.getContext("2d");
-				ctx.drawImage(video, 0, 0);
-				const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-				try {
-					const readBarcodes = detector._zxing.readBarcodes || detector._zxing.default?.readBarcodes;
-					if (readBarcodes) {
-						const barcodes = await readBarcodes(imageData, { tryHarder: true });
-						if (barcodes && barcodes.length > 0) {
-							result = barcodes[0].text;
-						}
-					}
-				} catch {
-					// zxing decode error, continue
-				}
 			}
 		}
 

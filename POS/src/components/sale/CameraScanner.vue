@@ -1,9 +1,12 @@
 <template>
-	<!-- Camera Scanner Overlay -->
+	<!-- Camera Scanner: Mobile = full-screen overlay, Desktop = floating PiP -->
 	<div
 		v-if="active"
-		class="fixed inset-0 z-[9999] flex flex-col"
-		:class="isMobile ? 'bg-black' : 'bg-black/80 items-end justify-end p-4'"
+		:class="[
+			isMobile
+				? 'fixed inset-0 z-[9999] flex flex-col bg-black'
+				: 'contents'
+		]"
 		@keyup.esc="close"
 		tabindex="0"
 		ref="rootEl"
@@ -67,21 +70,32 @@
 			</div>
 		</template>
 
-		<!-- Desktop: floating PiP-style panel -->
+		<!-- Desktop: floating draggable PiP panel (doesn't block POS) -->
 		<template v-else>
 			<div
-				class="relative w-[360px] bg-gray-900 rounded-2xl shadow-2xl border border-gray-700 overflow-hidden"
-				:style="{ marginBottom: '1rem', marginRight: '1rem' }"
+				ref="pipPanel"
+				class="fixed z-[9999] w-[360px] bg-gray-900 rounded-2xl shadow-2xl border border-gray-700 overflow-hidden select-none"
+				:style="{ left: pipX + 'px', top: pipY + 'px', bottom: 'auto', right: 'auto' }"
 			>
-				<!-- Panel header -->
-				<div class="flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-700">
+				<!-- Draggable header -->
+				<div
+					class="flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-700 cursor-move"
+					@mousedown="startDrag"
+					@touchstart.passive="startDrag"
+				>
 					<div class="flex items-center gap-2">
+						<!-- Drag handle icon -->
+						<svg class="w-4 h-4 text-gray-500" fill="currentColor" viewBox="0 0 24 24">
+							<circle cx="9" cy="5" r="1.5" /><circle cx="15" cy="5" r="1.5" />
+							<circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+							<circle cx="9" cy="19" r="1.5" /><circle cx="15" cy="19" r="1.5" />
+						</svg>
 						<div class="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
 						<span class="text-white text-xs font-medium">{{ __("Camera Scanner") }}</span>
 					</div>
 					<div class="flex items-center gap-1">
 						<button
-							@click="toggleTorch"
+							@click.stop="toggleTorch"
 							class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white"
 							:aria-label="__('Toggle flashlight')"
 						>
@@ -91,7 +105,7 @@
 							</svg>
 						</button>
 						<button
-							@click="close"
+							@click.stop="close"
 							class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white"
 							:aria-label="__('Close scanner')"
 						>
@@ -122,6 +136,23 @@
 						<div class="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-white/60 rounded-bl-lg" />
 						<div class="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-white/60 rounded-br-lg" />
 					</div>
+					<!-- Error overlay inside panel -->
+					<div v-if="error" class="absolute inset-0 flex items-center justify-center bg-gray-900/90">
+						<div class="text-center px-4">
+							<svg class="mx-auto h-8 w-8 text-red-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+									d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+							</svg>
+							<p class="text-white text-xs font-medium mb-1">{{ __("Camera Error") }}</p>
+							<p class="text-gray-400 text-[10px] mb-2">{{ error }}</p>
+							<button
+								@click.stop="retry"
+								class="px-3 py-1 bg-white/10 hover:bg-white/20 text-white text-[10px] rounded transition-colors"
+							>
+								{{ __("Retry") }}
+							</button>
+						</div>
+					</div>
 				</div>
 
 				<!-- Status bar -->
@@ -133,27 +164,6 @@
 				</div>
 			</div>
 		</template>
-
-		<!-- Error state -->
-		<div
-			v-if="error"
-			class="absolute inset-0 flex items-center justify-center bg-gray-900/95 z-30"
-		>
-			<div class="text-center px-6 max-w-sm">
-				<svg class="mx-auto h-12 w-12 text-red-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-						d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
-				</svg>
-				<p class="text-white text-sm font-medium mb-1">{{ __("Camera Access Required") }}</p>
-				<p class="text-gray-400 text-xs mb-4">{{ error }}</p>
-				<button
-					@click="retry"
-					class="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded-lg transition-colors"
-				>
-					{{ __("Try Again") }}
-				</button>
-			</div>
-		</div>
 	</div>
 </template>
 
@@ -168,10 +178,65 @@ const emit = defineEmits(["scan", "close"]);
 
 const rootEl = ref(null);
 const videoEl = ref(null);
+const pipPanel = ref(null);
 const error = ref(null);
 const lastScanned = ref(null);
 const isMobile = ref(false);
 const torchOn = ref(false);
+
+// ---- Desktop PiP drag state ----
+const PANEL_W = 360;
+const PANEL_H = 340; // approximate
+const pipX = ref(0);
+const pipY = ref(0);
+let dragging = false;
+let dragStartX = 0;
+let dragStartY = 0;
+let panelStartX = 0;
+let panelStartY = 0;
+
+function positionPip() {
+	// Default: bottom-right corner
+	pipX.value = window.innerWidth - PANEL_W - 16;
+	pipY.value = window.innerHeight - PANEL_H - 16;
+}
+
+function startDrag(e) {
+	const touch = e.touches ? e.touches[0] : e;
+	dragging = true;
+	dragStartX = touch.clientX;
+	dragStartY = touch.clientY;
+	panelStartX = pipX.value;
+	panelStartY = pipY.value;
+	document.addEventListener("mousemove", onDrag);
+	document.addEventListener("mouseup", stopDrag);
+	document.addEventListener("touchmove", onDrag, { passive: false });
+	document.addEventListener("touchend", stopDrag);
+	e.preventDefault();
+}
+
+function onDrag(e) {
+	if (!dragging) return;
+	const touch = e.touches ? e.touches[0] : e;
+	const dx = touch.clientX - dragStartX;
+	const dy = touch.clientY - dragStartY;
+	const maxX = window.innerWidth - PANEL_W;
+	const maxY = window.innerHeight - PANEL_H;
+	pipX.value = Math.max(0, Math.min(maxX, panelStartX + dx));
+	pipY.value = Math.max(0, Math.min(maxY, panelStartY + dy));
+}
+
+function stopDrag() {
+	dragging = false;
+	document.removeEventListener("mousemove", onDrag);
+	document.removeEventListener("mouseup", stopDrag);
+	document.removeEventListener("touchmove", onDrag);
+	document.removeEventListener("touchend", stopDrag);
+	// Save position
+	try {
+		localStorage.setItem("posnext:camera-pip", JSON.stringify({ x: pipX.value, y: pipY.value }));
+	} catch {}
+}
 
 let stream = null;
 let detector = null;
@@ -188,6 +253,21 @@ async function startScanning() {
 	// Detect mobile
 	isMobile.value = /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent)
 		|| (navigator.maxTouchPoints > 0 && window.innerWidth < 768);
+
+	// Position desktop PiP panel
+	if (!isMobile.value) {
+		try {
+			const saved = JSON.parse(localStorage.getItem("posnext:camera-pip") || "null");
+			if (saved && typeof saved.x === "number" && typeof saved.y === "number") {
+				pipX.value = Math.max(0, Math.min(window.innerWidth - PANEL_W, saved.x));
+				pipY.value = Math.max(0, Math.min(window.innerHeight - PANEL_H, saved.y));
+			} else {
+				positionPip();
+			}
+		} catch {
+			positionPip();
+		}
+	}
 
 	try {
 		stream = await navigator.mediaDevices.getUserMedia({
@@ -330,6 +410,7 @@ watch(
 
 onUnmounted(() => {
 	stop();
+	stopDrag(); // clean up any lingering drag listeners
 });
 </script>
 

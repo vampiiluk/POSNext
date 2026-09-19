@@ -1219,9 +1219,25 @@ const showCameraScanner = ref(false);
 function openCameraScanner() {
 	showCameraScanner.value = true;
 }
-function handleCameraScan(barcode) {
-	if (!barcode || !itemsSelectorRef.value) return;
-	itemsSelectorRef.value.processBarcodeScan(barcode);
+async function handleCameraScan(barcode) {
+	if (!barcode) return;
+	try {
+		const item = await itemStore.searchByBarcode(barcode);
+		if (item) {
+			cartStore.addItem(item);
+			frappe.utils.show_alert({
+				message: `${item.item_name || item.item_code} added`,
+				indicator: "green",
+			});
+		} else {
+			frappe.utils.show_alert({
+				message: __("Item not found: {0}", [barcode]),
+				indicator: "red",
+			});
+		}
+	} catch (e) {
+		console.error("Camera scan error:", e);
+	}
 }
 const clearCacheOverlayRef = ref(null);
 

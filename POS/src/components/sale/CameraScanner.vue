@@ -220,9 +220,6 @@ async function startScanning() {
 				facingMode: "environment",
 				width: { ideal: 640 },
 				height: { ideal: 480 },
-				focusMode: "continuous",
-				focusDistance: 0,
-				exposureMode: "continuous",
 			},
 			audio: false,
 		});
@@ -230,22 +227,6 @@ async function startScanning() {
 		if (videoEl.value) {
 			videoEl.value.srcObject = stream;
 			await videoEl.value.play();
-		}
-
-		// Apply close-focus constraints to the video track
-		// This makes the camera focus on nearby objects (barcodes) rather than distant backgrounds
-		const track = stream.getVideoTracks()[0];
-		if (track && track.applyConstraints) {
-			try {
-				await track.applyConstraints({
-					advanced: [
-						{ focusMode: "continuous", focusDistance: 0 },
-						{ exposureMode: "continuous" },
-					],
-				});
-			} catch {
-				// Focus constraints not supported on this device — camera still works
-			}
 		}
 
 		// Use native BarcodeDetector API (Chrome, Edge, Android, Opera)

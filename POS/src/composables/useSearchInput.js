@@ -230,6 +230,7 @@ export function useSearchInput({ itemStore, onItemFound, showWarning, isAnyDialo
 		// Utilities
 		focusSearchInput,
 		clearSearchAndResetInput,
+		processBarcodeScan,
 		cleanup,
 	};
 }

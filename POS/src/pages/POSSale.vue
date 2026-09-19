@@ -1249,6 +1249,10 @@ async function handleCameraScan(barcode) {
 		}
 	} catch (e) {
 		console.error("Camera scan error:", e);
+		frappe.utils.show_alert({
+			message: __("Scan error: {0}", [e.message || e]),
+			indicator: "red",
+		});
 	}
 }
 const clearCacheOverlayRef = ref(null);

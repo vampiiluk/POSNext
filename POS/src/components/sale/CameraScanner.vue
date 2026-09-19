@@ -5,15 +5,16 @@
 		ref="rootEl"
 		class="fixed z-[9999] bg-gray-900 rounded-2xl shadow-2xl border border-gray-700 overflow-hidden select-none"
 		:class="isMobile ? 'w-[calc(100vw-32px)] max-w-[360px]' : 'w-[360px]'"
-		:style="{ left: pipX + 'px', top: pipY + 'px', bottom: 'auto', right: 'auto' }"
+		:style="{ left: pipX + 'px', top: pipY + 'px', bottom: 'auto', right: 'auto', willChange: 'transform' }"
 		@keyup.esc="close"
 		tabindex="0"
 	>
-		<!-- Draggable header -->
+		<!-- Draggable header (touch-action:none prevents scroll interference) -->
 		<div
-			class="flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-700 cursor-move"
+			class="flex items-center justify-between px-3 py-2.5 bg-gray-800 border-b border-gray-700 cursor-move"
+			style="touch-action: none;"
 			@mousedown="startDrag"
-			@touchstart.passive="startDrag"
+			@touchstart="startDrag"
 		>
 			<div class="flex items-center gap-2">
 				<!-- Drag handle icon -->
@@ -131,7 +132,9 @@ function positionPip() {
 }
 
 function startDrag(e) {
+	// Handle both mouse and touch
 	const touch = e.touches ? e.touches[0] : e;
+	if (!touch) return;
 	dragging = true;
 	dragStartX = touch.clientX;
 	dragStartY = touch.clientY;
@@ -141,7 +144,11 @@ function startDrag(e) {
 	document.addEventListener("mouseup", stopDrag);
 	document.addEventListener("touchmove", onDrag, { passive: false });
 	document.addEventListener("touchend", stopDrag);
-	e.preventDefault();
+	document.addEventListener("touchcancel", stopDrag);
+	// Pause scanning during drag to free CPU
+	pauseScanning = true;
+	// Prevent default only on touch to stop scroll bleed-through
+	if (e.cancelable) e.preventDefault();
 }
 
 function onDrag(e) {
@@ -157,10 +164,14 @@ function onDrag(e) {
 
 function stopDrag() {
 	dragging = false;
+	pauseScanning = false;
 	document.removeEventListener("mousemove", onDrag);
 	document.removeEventListener("mouseup", stopDrag);
 	document.removeEventListener("touchmove", onDrag);
 	document.removeEventListener("touchend", stopDrag);
+	document.removeEventListener("touchcancel", stopDrag);
+	// Resume scanning
+	if (props.active && !scanFrame) scanLoop();
 	// Save position
 	try {
 		localStorage.setItem("posnext:camera-pip", JSON.stringify({ x: pipX.value, y: pipY.value }));
@@ -171,7 +182,10 @@ let stream = null;
 let detector = null;
 let scanFrame = null;
 let lastScanTime = 0;
+let pauseScanning = false;
 const SCAN_COOLDOWN_MS = 800; // debounce: same barcode won't re-trigger within 800ms
+const SCAN_INTERVAL_MS = 200; // scan every 200ms instead of every frame (saves CPU)
+let lastScanAttempt = 0;
 const lastCode = ref("");
 
 // ---- Detection ----
@@ -202,8 +216,8 @@ async function startScanning() {
 		stream = await navigator.mediaDevices.getUserMedia({
 			video: {
 				facingMode: "environment",
-				width: { ideal: 1280 },
-				height: { ideal: 720 },
+				width: { ideal: 640 },
+				height: { ideal: 480 },
 				focusMode: "continuous",
 				focusDistance: 0,
 				exposureMode: "continuous",
@@ -264,6 +278,13 @@ async function startScanning() {
 async function scanLoop() {
 	if (!videoEl.value || !props.active) return;
 
+	scanFrame = requestAnimationFrame(scanLoop);
+
+	// Skip scanning during drag or cooldown
+	const now = Date.now();
+	if (pauseScanning || (now - lastScanAttempt) < SCAN_INTERVAL_MS) return;
+	lastScanAttempt = now;
+
 	try {
 		let result = null;
 
@@ -293,10 +314,6 @@ async function scanLoop() {
 		}
 	} catch {
 		// Scan frame error — continue
-	}
-
-	if (props.active) {
-		scanFrame = requestAnimationFrame(scanLoop);
 	}
 }
 

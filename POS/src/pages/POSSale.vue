@@ -1224,11 +1224,23 @@ async function handleCameraScan(barcode) {
 	try {
 		const item = await itemStore.searchByBarcode(barcode);
 		if (item) {
-			cartStore.addItem(item);
-			frappe.utils.show_alert({
-				message: `${item.item_name || item.item_code} added`,
-				indicator: "green",
-			});
+			// Check if already in cart — increment qty instead of adding duplicate row
+			const existing = cartStore.invoiceItems.find(
+				(i) => i.item_code === item.item_code,
+			);
+			if (existing) {
+				cartStore.updateItemQuantity(item.item_code, existing.qty + 1);
+				frappe.utils.show_alert({
+					message: `${item.item_name || item.item_code} × ${existing.qty + 1}`,
+					indicator: "blue",
+				});
+			} else {
+				cartStore.addItem(item);
+				frappe.utils.show_alert({
+					message: `${item.item_name || item.item_code} added`,
+					indicator: "green",
+				});
+			}
 		} else {
 			frappe.utils.show_alert({
 				message: __("Item not found: {0}", [barcode]),

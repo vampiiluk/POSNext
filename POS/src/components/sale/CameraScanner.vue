@@ -185,10 +185,16 @@ let detector = null;
 let scanFrame = null;
 let lastScanTime = 0;
 let pauseScanning = false;
-const SCAN_COOLDOWN_MS = 800; // debounce: same barcode won't re-trigger within 800ms
 const SCAN_INTERVAL_MS = 200; // scan every 200ms instead of every frame (saves CPU)
 let lastScanAttempt = 0;
 const lastCode = ref("");
+
+// ---- Exponential cooldown to prevent duplicates ----
+// Same barcode: 2s → 4s → 8s → 16s → 32s (doubles each consecutive scan)
+// New barcode: resets to 2s base
+const BASE_COOLDOWN_MS = 2000;
+const MAX_COOLDOWN_MS = 32000;
+let consecutiveCount = 0; // how many times the same barcode was scanned in a row
 
 // ---- Detection ----
 
@@ -281,8 +287,22 @@ async function scanLoop() {
 
 		if (result) {
 			const now = Date.now();
-			if (result !== lastCode.value || now - lastScanTime > SCAN_COOLDOWN_MS) {
+
+			// Exponential cooldown: same barcode → longer wait each time
+			if (result === lastCode.value) {
+				consecutiveCount++;
+			} else {
+				// New barcode — reset
+				consecutiveCount = 0;
 				lastCode.value = result;
+			}
+
+			const cooldown = Math.min(
+				BASE_COOLDOWN_MS * Math.pow(2, consecutiveCount),
+				MAX_COOLDOWN_MS,
+			);
+
+			if (now - lastScanTime > cooldown) {
 				lastScanTime = now;
 				lastScanned.value = result;
 				emit("scan", result);
@@ -340,6 +360,7 @@ function stop() {
 	lastScanned.value = null;
 	lastCode.value = "";
 	torchOn.value = false;
+	consecutiveCount = 0; // reset exponential cooldown
 }
 
 function close() {
